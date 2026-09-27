@@ -138,12 +138,20 @@ function Metric({ label, value, sub }) {
   );
 }
 
-function hydratePrayer(serverPrayer, fallback) {
+function hydratePrayer(serverPrayer, fallback, selectedDate) {
   if (!serverPrayer) return fallback;
   const keys = ["fajr","sunrise","dhuha","dhuhr","asr","maghrib","isha"];
   const result = { ...fallback, raw: serverPrayer.raw, meta: serverPrayer.meta };
   for (const key of keys) {
-    result[key] = serverPrayer[key] ? new Date(serverPrayer[key]) : null;
+    const hour = Number(serverPrayer.raw?.[key]);
+    if (!Number.isFinite(hour)) {
+      result[key] = null;
+      continue;
+    }
+    const localWallClock = new Date(selectedDate);
+    localWallClock.setHours(0, 0, 0, 0);
+    localWallClock.setMilliseconds(hour * 3600000);
+    result[key] = localWallClock;
   }
   return result;
 }
@@ -358,8 +366,8 @@ export default function FalakApp() {
   ]);
 
   const prayers = useMemo(
-    () => hydratePrayer(serverHisab?.prayer, localPrayers),
-    [serverHisab, localPrayers]
+    () => hydratePrayer(serverHisab?.prayer, localPrayers, date),
+    [serverHisab, localPrayers, date]
   );
 
   const qibla = useMemo(
@@ -420,7 +428,10 @@ export default function FalakApp() {
   };
 
   const nextPrayer = useMemo(() => {
-    if (!sameDay(date, now)) return null;
+    const deviceTimezone = -now.getTimezoneOffset() / 60;
+    if (!sameDay(date, now) || Math.abs(deviceTimezone - location.timezone) > 0.01) {
+      return null;
+    }
     for (const [key, label] of MAIN_PRAYERS) {
       const value = prayers[key];
       if (value && value.getTime() > now.getTime()) {
@@ -433,7 +444,7 @@ export default function FalakApp() {
       }
     }
     return null;
-  }, [date, now, prayers]);
+  }, [date, now, prayers, location.timezone]);
 
   async function enableCompass() {
     if (typeof window.DeviceOrientationEvent === "undefined") {
