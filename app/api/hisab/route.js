@@ -24,7 +24,8 @@ const REFERENCE_PARAMETERS = {
   sunrise_adjustment_minutes: -2,
   temperature_c: 28,
   pressure_mbar: 1010,
-  atmos_refract_deg: 0.5667,\n  minute_rounding: "kemenag_up_except_sunrise",
+  atmos_refract_deg: 0.5667,
+  minute_rounding: "kemenag_up_except_sunrise",
 };
 
 function validNumber(value, min, max) {
