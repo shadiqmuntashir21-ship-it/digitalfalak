@@ -452,6 +452,7 @@ export default function AdminConsole() {
                     <option value="isha_target_altitude">Isya · target altitude</option>
                     <option value="dhuha_target_altitude">Dhuha · target altitude</option>
                     <option value="asr_target_altitude">Asar · target altitude</option>
+                    <option value="qibla_bearing">Kiblat · bearing/azimut</option>
                     <option value="hour_angle">Referensi sudut waktu</option>
                     <option value="custom_formula">Formula laboratorium</option>
                   </datalist>
@@ -464,7 +465,7 @@ export default function AdminConsole() {
                 <label className="full">Data uji (JSON)<textarea rows="2" value={formulaDraft.test_scope} onChange={(e)=>setFormulaDraft({...formulaDraft,test_scope:e.target.value})}/></label>
                 <div className="formula-actions"><button className="admin-outline" onClick={testFormula}>Uji Formula</button><button className="admin-primary" onClick={saveFormula}>Simpan Formula</button></div>
                 {formulaResult ? <div className="formula-result">{formulaResult}</div> : null}
-                <small className="formula-help"><b>Slot produksi:</b> fajr_target_altitude, isha_target_altitude, dhuha_target_altitude, asr_target_altitude. Slot lain dapat disimpan/diuji tetapi tidak mengubah hasil sampai dihubungkan ke engine. Fungsi aman: sind, cosd, tand, cotd, asind, acosd, atand, atan2d, sqrt, abs, min, max, round, floor, ceil. Operator: + − × ÷ ^.</small>
+                <small className="formula-help"><b>Slot produksi:</b> fajr_target_altitude, isha_target_altitude, dhuha_target_altitude, asr_target_altitude, qibla_bearing. Slot lain dapat disimpan/diuji tetapi tidak mengubah hasil sampai dihubungkan ke engine. Fungsi aman: sind, cosd, tand, cotd, asind, acosd, atand, atan2d, sqrt, abs, min, max, round, floor, ceil. Operator: + − × ÷ ^.</small>
               </div>
             </div>
           </section>
