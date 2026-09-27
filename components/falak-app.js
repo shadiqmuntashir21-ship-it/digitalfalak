@@ -243,7 +243,7 @@ export default function FalakApp() {
     } else if (typeof window.DeviceOrientationEvent.requestPermission !== "function") {
       setCompassPermission("granted");
     }
-  }, [active, compassPermission, magneticDeclination, compassOffset]);
+  }, [active, compassPermission]);
 
   useEffect(() => {
     if (active !== "qibla" || compassPermission !== "granted") return;
@@ -320,7 +320,7 @@ export default function FalakApp() {
       window.removeEventListener("deviceorientationabsolute", onOrientation, true);
       window.removeEventListener("deviceorientation", onOrientation, true);
     };
-  }, [active, compassPermission]);
+  }, [active, compassPermission, magneticDeclination, compassOffset]);
 
   const localPrayers = useMemo(
     () =>
