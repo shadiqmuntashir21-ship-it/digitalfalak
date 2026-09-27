@@ -5,6 +5,7 @@ import {
   solarPositionSpa,
 } from "../../../lib/falak/prayer-times-spa";
 import { qiblaGeodesic } from "../../../lib/falak/qibla";
+import { magvar } from "magvar";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -80,6 +81,12 @@ async function calculate(body) {
   });
 
   const qibla = qiblaGeodesic(latitude, longitude);
+  const magneticDeclination = magvar(
+    latitude,
+    longitude,
+    Math.max(-0.5, elevation / 1000),
+    instant
+  );
   const rashdul = findRashdulSpa({
     day: body.day,
     latitude,
@@ -99,6 +106,8 @@ async function calculate(body) {
       prayer,
       solar,
       qibla,
+      magneticDeclination,
+      magneticModel: "WMM2025",
       rashdul,
     },
   };
