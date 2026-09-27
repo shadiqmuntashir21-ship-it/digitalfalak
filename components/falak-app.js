@@ -2,7 +2,6 @@
 
 import Link from "next/link";
 import { useEffect, useMemo, useRef, useState } from "react";
-import { getSpa } from "nrel-spa";
 import Icon from "./icons";
 import { calculatePrayerTimes } from "../lib/falak/prayer-times";
 import { formatClock, formatNumber } from "../lib/falak/format";
@@ -10,6 +9,7 @@ import { findRashdulQibla, qiblaGeodesic } from "../lib/falak/qibla";
 import { formatHijriCivil, gregorianToHijriCivil } from "../lib/falak/hijri";
 import { moonPhaseEstimate } from "../lib/falak/moon";
 import { normalize180, normalize360 } from "../lib/falak/math";
+import { solarPositionAt } from "../lib/falak/solar";
 
 const DEFAULT_METHOD = {
   id: null,
@@ -81,13 +81,6 @@ function sameDay(a, b) {
   );
 }
 
-function localHourInstant(date, hour, timezone) {
-  return new Date(
-    Date.UTC(date.getFullYear(), date.getMonth(), date.getDate()) +
-      (hour - timezone) * 3600000
-  );
-}
-
 function circularSmooth(previous, next, factor = 0.2) {
   if (previous == null) return normalize360(next);
   const delta = normalize180(next - previous);
@@ -145,6 +138,16 @@ function Metric({ label, value, sub }) {
   );
 }
 
+function hydratePrayer(serverPrayer, fallback) {
+  if (!serverPrayer) return fallback;
+  const keys = ["fajr","sunrise","dhuha","dhuhr","asr","maghrib","isha"];
+  const result = { ...fallback, raw: serverPrayer.raw, meta: serverPrayer.meta };
+  for (const key of keys) {
+    result[key] = serverPrayer[key] ? new Date(serverPrayer[key]) : null;
+  }
+  return result;
+}
+
 export default function FalakApp() {
   const [active, setActive] = useState("home");
   const [date, setDate] = useState(() => new Date());
@@ -163,6 +166,8 @@ export default function FalakApp() {
   const [installPrompt, setInstallPrompt] = useState(null);
   const [geoState, setGeoState] = useState("");
   const [showCalc, setShowCalc] = useState(false);
+  const [serverHisab, setServerHisab] = useState(null);
+  const [hisabState, setHisabState] = useState("local");
 
   const [heading, setHeading] = useState(null);
   const [compassPermission, setCompassPermission] = useState("idle");
@@ -291,7 +296,7 @@ export default function FalakApp() {
     };
   }, [active, compassPermission]);
 
-  const prayers = useMemo(
+  const localPrayers = useMemo(
     () =>
       calculatePrayerTimes({
         date,
@@ -300,6 +305,61 @@ export default function FalakApp() {
         formulas: method.formulas,
       }),
     [date, location, method]
+  );
+
+  const minuteTick = Math.floor(now.getTime() / 60000);
+
+  useEffect(() => {
+    const controller = new AbortController();
+    setHisabState((current) => (current === "nrel" ? "refreshing" : "loading"));
+
+    fetch("/api/hisab", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      signal: controller.signal,
+      body: JSON.stringify({
+        day: dateKey(date),
+        instant: sameDay(date, now) ? now.toISOString() : new Date(
+          Date.UTC(date.getFullYear(), date.getMonth(), date.getDate(), 4, 0, 0)
+        ).toISOString(),
+        latitude: location.latitude,
+        longitude: location.longitude,
+        elevation: location.elevation,
+        timezone: location.timezone,
+        parameters: method.parameters || {},
+        formulas: method.formulas || [],
+      }),
+    })
+      .then(async (response) => {
+        if (!response.ok) throw new Error("hisab api");
+        return response.json();
+      })
+      .then((payload) => {
+        setServerHisab(payload);
+        setHisabState(payload.source === "nrel-spa" ? "nrel" : "local");
+      })
+      .catch((error) => {
+        if (error.name !== "AbortError") {
+          setHisabState("local");
+        }
+      });
+
+    return () => controller.abort();
+  }, [
+    date,
+    minuteTick,
+    location.latitude,
+    location.longitude,
+    location.elevation,
+    location.timezone,
+    method.slug,
+    method.parameters,
+    method.formulas,
+  ]);
+
+  const prayers = useMemo(
+    () => hydratePrayer(serverHisab?.prayer, localPrayers),
+    [serverHisab, localPrayers]
   );
 
   const qibla = useMemo(
@@ -317,44 +377,47 @@ export default function FalakApp() {
     [qibla.bearing, heading]
   );
 
-  const rashdul = useMemo(
+  const localRashdul = useMemo(
     () =>
       findRashdulQibla({
         date,
         latitude: location.latitude,
         longitude: location.longitude,
         timezone: location.timezone,
-        elevation: location.elevation,
       }),
     [date, location]
   );
+
+  const rashdul = serverHisab?.rashdul?.length
+    ? serverHisab.rashdul
+    : localRashdul;
 
   const hijri = useMemo(() => gregorianToHijriCivil(date), [date]);
   const moon = useMemo(() => moonPhaseEstimate(date), [date]);
 
   const solarMoment = useMemo(() => {
     if (sameDay(date, now)) return now;
-    return localHourInstant(date, 12, location.timezone);
-  }, [date, now, location.timezone]);
+    const selected = new Date(date);
+    selected.setHours(12, 0, 0, 0);
+    return selected;
+  }, [date, now]);
 
-  const solarNow = useMemo(() => {
-    try {
-      return getSpa(
-        solarMoment,
-        location.latitude,
-        location.longitude,
-        location.timezone,
-        {
-          elevation: location.elevation,
-          temperature: Number(method.parameters?.temperature_c ?? 28),
-          pressure: Number(method.parameters?.pressure_mbar ?? 1010),
-          function: 0,
-        }
-      );
-    } catch {
-      return null;
-    }
-  }, [solarMoment, location, method]);
+  const localSolarNow = useMemo(
+    () =>
+      solarPositionAt({
+        date: solarMoment,
+        latitude: location.latitude,
+        longitude: location.longitude,
+        timezone: location.timezone,
+      }),
+    [solarMoment, location.latitude, location.longitude, location.timezone]
+  );
+
+  const solarNow = serverHisab?.solar || {
+    azimuth: localSolarNow.azimuth,
+    altitude: localSolarNow.altitude,
+    zenith: 90 - localSolarNow.altitude,
+  };
 
   const nextPrayer = useMemo(() => {
     if (!sameDay(date, now)) return null;
@@ -438,7 +501,7 @@ export default function FalakApp() {
     <>
       <section className="hero">
         <div className="hero-copy">
-          <div className="live-chip"><span /> HISAB LOKAL AKTIF</div>
+          <div className="live-chip"><span /> {hisabState === "nrel" || hisabState === "refreshing" ? "NREL SPA AKTIF" : "FALLBACK LOKAL AKTIF"}</div>
           <h1>Falak dari <em>koordinat nyata</em>, bukan tabel jadwal.</h1>
           <p>Digital Falak menghitung posisi Matahari dan arah kiblat dari titik pengguna, tanggal, elevasi, zona waktu, serta metode falak yang aktif.</p>
           <div className="hero-actions">
@@ -456,7 +519,7 @@ export default function FalakApp() {
 
       <section className="quick-status">
         <div><span>Lokasi</span><b>{location.label}</b><small>{formatNumber(location.latitude,5)}°, {formatNumber(location.longitude,5)}°</small></div>
-        <div><span>Engine</span><b>NREL SPA</b><small>posisi Matahari</small></div>
+        <div><span>Engine</span><b>{hisabState === "nrel" || hisabState === "refreshing" ? "NREL SPA" : "Local fallback"}</b><small>{hisabState === "refreshing" ? "memperbarui…" : "posisi Matahari"}</small></div>
         <div><span>Kiblat</span><b>WGS84</b><small>{formatNumber(qibla.bearing,2)}° True North</small></div>
         <div><span>Metode</span><b>{method.name}</b><MethodBadge method={method}/></div>
       </section>
@@ -575,7 +638,7 @@ export default function FalakApp() {
       <SectionTitle eyebrow="MATAHARI" title="Posisi Matahari dari NREL SPA" text="Halaman ini menunjukkan posisi Matahari untuk waktu sekarang pada tanggal aktif, dihitung dari titik lokasi dan kondisi observasi."/>
       <div className="metric-grid four">
         <Metric label="Azimut" value={solarNow?`${formatNumber(solarNow.azimuth,4)}°`:"—"} sub="0° Utara · 90° Timur"/>
-        <Metric label="Elevasi" value={solarNow?`${formatNumber(90-solarNow.zenith,4)}°`:"—"} sub="di atas/bawah ufuk"/>
+        <Metric label="Elevasi" value={solarNow?`${formatNumber(solarNow.altitude,4)}°`:"—"} sub="di atas/bawah ufuk"/>
         <Metric label="Solar noon" value={formatClock(prayers.dhuhr)} sub="Zuhur termasuk ihtiyat"/>
         <Metric label="Engine" value="NREL SPA" sub="topocentric solar position"/>
       </div>
