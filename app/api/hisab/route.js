@@ -80,7 +80,7 @@ async function calculate(body) {
     parameters,
   });
 
-  const qibla = qiblaGeodesic(latitude, longitude);
+  const qibla = qiblaGeodesic(latitude, longitude, formulas);
   const magneticDeclination = magvar(
     latitude,
     longitude,
