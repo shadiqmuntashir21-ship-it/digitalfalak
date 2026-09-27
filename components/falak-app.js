@@ -573,9 +573,9 @@ export default function FalakApp() {
           <button className="calculation-toggle" onClick={()=>setShowCalc(!showCalc)}>{showCalc?"Tutup rincian":"Lihat rincian perhitungan"} <Icon name="chevron" size={14}/></button>
           {showCalc ? <div className="calc-details">
             <div><span>Engine astronomi</span><b>{prayers.meta.engine}</b></div>
-            <div><span>Subuh</span><b>Matahari −{prayers.meta.fajrAngle}°</b></div>
-            <div><span>Isya</span><b>Matahari −{prayers.meta.ishaAngle}°</b></div>
-            <div><span>Dhuha</span><b>Altitude +{prayers.meta.dhuhaAltitude}°</b></div>
+            <div><span>Target Subuh</span><b>{formatNumber(prayers.meta.fajrTargetAltitude ?? -prayers.meta.fajrAngle,4)}°</b></div>
+            <div><span>Target Isya</span><b>{formatNumber(prayers.meta.ishaTargetAltitude ?? -prayers.meta.ishaAngle,4)}°</b></div>
+            <div><span>Target Dhuha</span><b>{formatNumber(prayers.meta.dhuhaTargetAltitude ?? prayers.meta.dhuhaAltitude,4)}°</b></div>
             <div><span>Asar</span><b>faktor bayangan {prayers.meta.asrFactor}×</b></div>
             <div><span>Altitude target Asar</span><b>{formatNumber(prayers.meta.asrTargetAltitude,4)}°</b></div>
             <div><span>Elevasi titik</span><b>{formatNumber(location.elevation,0)} m</b></div>
