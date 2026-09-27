@@ -89,6 +89,13 @@ function circularSmooth(previous, next, factor = 0.2) {
 
 function tiltCompensatedHeading(alpha, beta, gamma) {
   if (![alpha, beta, gamma].every(Number.isFinite)) return null;
+
+  // W3C: when the screen is essentially horizontal, compass heading is
+  // 360 - alpha. The tilt matrix becomes undefined/unstable near beta=gamma=0.
+  if (Math.abs(beta) < 5 && Math.abs(gamma) < 5) {
+    return normalize360(360 - alpha);
+  }
+
   const degToRad = Math.PI / 180;
   const x = beta * degToRad;
   const y = gamma * degToRad;
@@ -182,8 +189,10 @@ export default function FalakApp() {
   const [compassSource, setCompassSource] = useState("");
   const [compassAccuracy, setCompassAccuracy] = useState(null);
   const [deviceTilt, setDeviceTilt] = useState(null);
+  const [compassOffset, setCompassOffset] = useState(0);
   const headingRef = useRef(null);
   const hasAbsolute = useRef(false);
+  const magneticDeclination = Number(serverHisab?.magneticDeclination ?? 0);
 
   useEffect(() => {
     const timer = setInterval(() => setNow(new Date()), 1000);
@@ -194,6 +203,8 @@ export default function FalakApp() {
     try {
       const saved = localStorage.getItem("df-location-v2");
       if (saved) setLocation(JSON.parse(saved));
+      const savedOffset = Number(localStorage.getItem("df-compass-offset") || 0);
+      if (Number.isFinite(savedOffset)) setCompassOffset(savedOffset);
     } catch {}
 
     fetch("/api/methods")
@@ -232,7 +243,7 @@ export default function FalakApp() {
     } else if (typeof window.DeviceOrientationEvent.requestPermission !== "function") {
       setCompassPermission("granted");
     }
-  }, [active, compassPermission]);
+  }, [active, compassPermission, magneticDeclination, compassOffset]);
 
   useEffect(() => {
     if (active !== "qibla" || compassPermission !== "granted") return;
@@ -249,16 +260,23 @@ export default function FalakApp() {
 
       if (
         typeof event.webkitCompassHeading === "number" &&
-        Number.isFinite(event.webkitCompassHeading)
+        Number.isFinite(event.webkitCompassHeading) &&
+        event.webkitCompassHeading >= 0
       ) {
-        nextHeading = event.webkitCompassHeading;
-        source = "Kompas magnetik iOS";
+        // WebKit explicitly reports magnetic north. Convert to true north
+        // with WMM2025 declination from the server calculation route.
+        nextHeading = normalize360(
+          event.webkitCompassHeading + magneticDeclination + compassOffset
+        );
+        source = "True North · WMM2025";
         hasAbsolute.current = true;
         if (
           typeof event.webkitCompassAccuracy === "number" &&
           Number.isFinite(event.webkitCompassAccuracy)
         ) {
-          setCompassAccuracy(Math.abs(event.webkitCompassAccuracy));
+          setCompassAccuracy(
+            event.webkitCompassAccuracy < 0 ? -1 : event.webkitCompassAccuracy
+          );
         }
       } else if (
         Number.isFinite(event.alpha) &&
@@ -272,7 +290,7 @@ export default function FalakApp() {
         if (raw != null) {
           const screenAngle =
             Number(window.screen?.orientation?.angle || window.orientation || 0) || 0;
-          nextHeading = normalize360(raw + screenAngle);
+          nextHeading = normalize360(raw + screenAngle + compassOffset);
           source = "Sensor absolut";
           hasAbsolute.current = true;
         }
@@ -283,7 +301,7 @@ export default function FalakApp() {
           gamma || 0
         );
         if (raw != null) {
-          nextHeading = raw;
+          nextHeading = normalize360(raw + compassOffset);
           source = "Sensor relatif";
         }
       }
@@ -619,11 +637,40 @@ export default function FalakApp() {
           </div>
           {qiblaError!=null&&qiblaError<=2?<div className="aligned-pill"><Icon name="check" size={14}/> Tepat ke arah kiblat</div>:null}
           {compassPermission!=="granted"||heading==null?<button className="primary-btn compass-activate" onClick={enableCompass}><Icon name="compass" size={16}/> Aktifkan kompas HP</button>:null}
-          <div className={`sensor-status ${compassSource==="Sensor relatif"?"warning":""}`}>
-            <Icon name={compassSource==="Sensor relatif"?"warning":"compass"} size={15}/>
-            <div><b>{heading==null?"Sensor belum aktif":compassSource}</b><small>{heading==null?"Gunakan HP yang memiliki magnetometer / sensor orientasi.":compassSource==="Sensor relatif"?"Arah bergerak, tetapi tidak boleh dianggap presisi. Kalibrasi atau gunakan perangkat dengan heading absolut.":"Heading absolut aktif dan sudah dihaluskan."}</small></div>
+          <div className={`sensor-status ${compassSource==="Sensor relatif"||compassAccuracy===-1?"warning":""}`}>
+            <Icon name={compassSource==="Sensor relatif"||compassAccuracy===-1?"warning":"compass"} size={15}/>
+            <div>
+              <b>{heading==null?"Sensor belum aktif":compassSource}</b>
+              <small>
+                {heading==null
+                  ?"Gunakan HP yang memiliki magnetometer / sensor orientasi."
+                  : compassAccuracy===-1
+                    ?"Kompas belum terkalibrasi. Lakukan gerakan angka 8 sebelum digunakan."
+                    : compassSource==="Sensor relatif"
+                      ?"Arah bergerak, tetapi tidak boleh dianggap presisi. Kalibrasi atau gunakan perangkat dengan heading absolut."
+                      : compassSource==="True North · WMM2025"
+                        ?`Heading magnetik dikoreksi ke True North dengan WMM2025 (${magneticDeclination>=0?"+":""}${formatNumber(magneticDeclination,2)}°).`
+                        :"Heading absolut aktif dan sudah dihaluskan."}
+              </small>
+            </div>
           </div>
           {deviceTilt!=null&&deviceTilt>45?<div className="tilt-warning">Pegang HP lebih mendatar agar heading lebih stabil.</div>:null}
+          <div className="compass-offset">
+            <div><span>Koreksi perangkat</span><b>{compassOffset>=0?"+":""}{formatNumber(compassOffset,1)}°</b></div>
+            <input
+              type="range"
+              min="-15"
+              max="15"
+              step="0.5"
+              value={compassOffset}
+              onChange={(event)=>{
+                const value=Number(event.target.value);
+                setCompassOffset(value);
+                localStorage.setItem("df-compass-offset",String(value));
+              }}
+            />
+            <small>Biarkan 0° kecuali sensor HP sudah dibandingkan dengan arah acuan yang diketahui.</small>
+          </div>
           <small className="calibration-note">Kalibrasi: gerakkan HP membentuk angka 8, jauhkan dari logam/magnet, lalu pegang relatif datar. Kompas HP tetap memiliki keterbatasan sensor.</small>
         </div>
 
@@ -632,6 +679,7 @@ export default function FalakApp() {
             <Metric label="Azimut Kiblat" value={`${formatNumber(qibla.bearing,4)}°`} sub="True North · WGS84"/>
             <Metric label="Jarak geodesik" value={`${formatNumber(qibla.distanceKm,0)} km`} sub="lintasan ellipsoid"/>
             <Metric label="Selisih arah HP" value={qiblaError==null?"—":`${formatNumber(qiblaError,1)}°`} sub="semakin kecil semakin tepat"/>
+            <Metric label="Deklinasi magnetik" value={`${magneticDeclination>=0?"+":""}${formatNumber(magneticDeclination,2)}°`} sub="WMM2025 · untuk koreksi kompas"/>
             <Metric label="Akurasi GPS" value={location.accuracy?`±${location.accuracy} m`:"—"} sub={location.label}/>
           </div>
           <div className="surface-card rashdul-card">
