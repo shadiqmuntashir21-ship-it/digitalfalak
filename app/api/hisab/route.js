@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
-import { calculatePrayerTimesSpa, solarPositionSpa } from "../../../lib/falak/prayer-times-spa";
-import { findRashdulQibla } from "../../../lib/falak/qibla";
+import { calculatePrayerTimesSpa, findRashdulSpa, solarPositionSpa } from "../../../lib/falak/prayer-times-spa";
+import { qiblaGeodesic } from "../../../lib/falak/qibla";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -46,19 +46,16 @@ export async function POST(request) {
       parameters: body.parameters || {},
     });
 
-    const [y, m, d] = body.day.split("-").map(Number);
-    const localDate = new Date(y, m - 1, d, 12, 0, 0, 0);
-    const rashdul = findRashdulQibla({
-      date: localDate,
+    const qibla = qiblaGeodesic(latitude, longitude);
+    const rashdul = findRashdulSpa({
+      day: body.day,
       latitude,
       longitude,
       timezone,
       elevation,
-    }).map((item) => ({
-      localHour: item.localHour,
-      altitude: item.altitude,
-      azimuth: item.azimuth,
-    }));
+      parameters: body.parameters || {},
+      targetBearing: qibla.bearing,
+    });
 
     return NextResponse.json({
       source: "nrel-spa",
