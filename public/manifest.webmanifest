@@ -1,0 +1,13 @@
+{
+  "name": "Digital Falak",
+  "short_name": "Falak",
+  "description": "Laboratorium hisab ilmu falak berbasis koordinat.",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#f4f5ef",
+  "theme_color": "#071a2d",
+  "orientation": "portrait-primary",
+  "icons": [
+    { "src": "/icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any maskable" }
+  ]
+}
