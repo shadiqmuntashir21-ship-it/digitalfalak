@@ -35,6 +35,7 @@ const DEFAULT_METHOD = {
     temperature_c: 28,
     pressure_mbar: 1010,
     atmos_refract_deg: 0.5667,
+    minute_rounding: "kemenag_up_except_sunrise",
   },
   formulas: [],
 };
