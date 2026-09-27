@@ -445,7 +445,17 @@ export default function AdminConsole() {
               </div>
 
               <div className="formula-editor">
-                <label>Slot<input value={formulaDraft.slot} onChange={(e)=>setFormulaDraft({...formulaDraft,slot:e.target.value})}/></label>
+                <label>Slot
+                  <input list="formula-slot-options" value={formulaDraft.slot} onChange={(e)=>setFormulaDraft({...formulaDraft,slot:e.target.value})}/>
+                  <datalist id="formula-slot-options">
+                    <option value="fajr_target_altitude">Subuh · target altitude</option>
+                    <option value="isha_target_altitude">Isya · target altitude</option>
+                    <option value="dhuha_target_altitude">Dhuha · target altitude</option>
+                    <option value="asr_target_altitude">Asar · target altitude</option>
+                    <option value="hour_angle">Referensi sudut waktu</option>
+                    <option value="custom_formula">Formula laboratorium</option>
+                  </datalist>
+                </label>
                 <label>Nama formula<input value={formulaDraft.label} onChange={(e)=>setFormulaDraft({...formulaDraft,label:e.target.value})}/></label>
                 <label className="full">Ekspresi<input className="formula-input" value={formulaDraft.expression} onChange={(e)=>setFormulaDraft({...formulaDraft,expression:e.target.value})} placeholder="atand(1/(factor+cotd(noon_altitude)))"/></label>
                 <label>Variabel<input value={formulaDraft.variables} onChange={(e)=>setFormulaDraft({...formulaDraft,variables:e.target.value})} placeholder="factor,noon_altitude"/></label>
@@ -454,7 +464,7 @@ export default function AdminConsole() {
                 <label className="full">Data uji (JSON)<textarea rows="2" value={formulaDraft.test_scope} onChange={(e)=>setFormulaDraft({...formulaDraft,test_scope:e.target.value})}/></label>
                 <div className="formula-actions"><button className="admin-outline" onClick={testFormula}>Uji Formula</button><button className="admin-primary" onClick={saveFormula}>Simpan Formula</button></div>
                 {formulaResult ? <div className="formula-result">{formulaResult}</div> : null}
-                <small className="formula-help">Fungsi aman: sind, cosd, tand, cotd, asind, acosd, atand, atan2d, sqrt, abs, min, max, round, floor, ceil. Operator: + − × ÷ ^.</small>
+                <small className="formula-help"><b>Slot produksi:</b> fajr_target_altitude, isha_target_altitude, dhuha_target_altitude, asr_target_altitude. Slot lain dapat disimpan/diuji tetapi tidak mengubah hasil sampai dihubungkan ke engine. Fungsi aman: sind, cosd, tand, cotd, asind, acosd, atand, atan2d, sqrt, abs, min, max, round, floor, ceil. Operator: + − × ÷ ^.</small>
               </div>
             </div>
           </section>
