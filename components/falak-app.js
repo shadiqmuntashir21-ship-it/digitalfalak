@@ -389,8 +389,8 @@ export default function FalakApp() {
   );
 
   const qibla = useMemo(
-    () => qiblaGeodesic(location.latitude, location.longitude),
-    [location.latitude, location.longitude]
+    () => qiblaGeodesic(location.latitude, location.longitude, method.formulas || []),
+    [location.latitude, location.longitude, method.formulas]
   );
 
   const qiblaRelative = useMemo(
@@ -410,8 +410,9 @@ export default function FalakApp() {
         latitude: location.latitude,
         longitude: location.longitude,
         timezone: location.timezone,
+        formulas: method.formulas || [],
       }),
-    [date, location]
+    [date, location, method.formulas]
   );
 
   const rashdul = serverHisab?.rashdul?.length
