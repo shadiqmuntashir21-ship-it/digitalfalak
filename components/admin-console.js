@@ -34,6 +34,7 @@ const EMPTY_METHOD = {
     temperature_c: 28,
     pressure_mbar: 1010,
     atmos_refract_deg: 0.5667,
+    minute_rounding: "kemenag_up_except_sunrise",
   },
 };
 
@@ -427,6 +428,21 @@ export default function AdminConsole() {
 
             <div className="editor-card">
               <div className="admin-section-head"><div><span className="eyebrow">PARAMETER FALAK</span><b>Parameter metode</b></div><small>Semua perubahan baru dipakai publik saat status Published.</small></div>
+              <label className="admin-rounding-label">Kebijakan pembulatan menit
+                <select
+                  value={draft.parameters?.minute_rounding || "none"}
+                  onChange={(e)=>setDraft((current)=>({
+                    ...current,
+                    parameters:{...(current.parameters||{}),minute_rounding:e.target.value}
+                  }))}
+                >
+                  <option value="kemenag_up_except_sunrise">Kemenag: naik, terbit dibuang</option>
+                  <option value="none">Tanpa pembulatan</option>
+                  <option value="ceil">Selalu ke atas</option>
+                  <option value="nearest">Terdekat</option>
+                  <option value="floor">Selalu ke bawah</option>
+                </select>
+              </label>
               <div className="parameter-admin-grid">
                 {PARAM_FIELDS.map(([key,label,unit])=>(
                   <label key={key}><span>{label}<small>{unit}</small></span><input type="number" step="0.0001" value={draft.parameters?.[key] ?? ""} onChange={(e)=>updateParam(key,e.target.value)}/></label>
