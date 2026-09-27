@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { calculatePrayerTimes } from "../lib/falak/prayer-times";
 import { formatClock, formatNumber } from "../lib/falak/format";
 import { findRashdulQibla, greatCircleDistanceKm, qiblaBearing } from "../lib/falak/qibla";
@@ -95,6 +95,11 @@ export default function FalakApp() {
   const [showFormula, setShowFormula] = useState(false);
   const [geoState, setGeoState] = useState("");
   const [installPrompt, setInstallPrompt] = useState(null);
+  const [deviceHeading, setDeviceHeading] = useState(null);
+  const [compassPermission, setCompassPermission] = useState("idle");
+  const [compassSource, setCompassSource] = useState("");
+  const [compassAccuracy, setCompassAccuracy] = useState(null);
+  const absoluteHeadingSeen = useRef(false);
 
   useEffect(() => {
     const saved = window.localStorage.getItem("df-location");
@@ -132,6 +137,71 @@ export default function FalakApp() {
     window.localStorage.setItem("df-location", JSON.stringify(location));
   }, [location]);
 
+  useEffect(() => {
+    if (active !== "qibla" || compassPermission !== "granted") return;
+
+    const onOrientation = (event) => {
+      let heading = null;
+      let source = "";
+      const screenAngle =
+        Number(window.screen?.orientation?.angle ?? window.orientation ?? 0) || 0;
+
+      if (
+        typeof event.webkitCompassHeading === "number" &&
+        Number.isFinite(event.webkitCompassHeading)
+      ) {
+        heading = event.webkitCompassHeading;
+        source = "Kompas magnetik";
+        absoluteHeadingSeen.current = true;
+        if (
+          typeof event.webkitCompassAccuracy === "number" &&
+          Number.isFinite(event.webkitCompassAccuracy)
+        ) {
+          setCompassAccuracy(Math.abs(event.webkitCompassAccuracy));
+        }
+      } else if (
+        typeof event.alpha === "number" &&
+        Number.isFinite(event.alpha) &&
+        (event.absolute === true || event.type === "deviceorientationabsolute")
+      ) {
+        heading = (360 - event.alpha + screenAngle + 360) % 360;
+        source = "Sensor absolut";
+        absoluteHeadingSeen.current = true;
+      } else if (
+        typeof event.alpha === "number" &&
+        Number.isFinite(event.alpha) &&
+        !absoluteHeadingSeen.current
+      ) {
+        heading = (360 - event.alpha + screenAngle + 360) % 360;
+        source = "Sensor relatif";
+      }
+
+      if (heading != null) {
+        setDeviceHeading(heading);
+        setCompassSource(source);
+      }
+    };
+
+    window.addEventListener("deviceorientationabsolute", onOrientation, true);
+    window.addEventListener("deviceorientation", onOrientation, true);
+
+    return () => {
+      window.removeEventListener("deviceorientationabsolute", onOrientation, true);
+      window.removeEventListener("deviceorientation", onOrientation, true);
+    };
+  }, [active, compassPermission]);
+
+  useEffect(() => {
+    if (active !== "qibla" || compassPermission !== "idle") return;
+    if (typeof window === "undefined" || typeof window.DeviceOrientationEvent === "undefined") {
+      setCompassPermission("unsupported");
+      return;
+    }
+    if (typeof window.DeviceOrientationEvent.requestPermission !== "function") {
+      setCompassPermission("granted");
+    }
+  }, [active, compassPermission]);
+
   const prayers = useMemo(
     () => calculatePrayerTimes({ date, ...location, parameters: method.parameters }),
     [date, location, method]
@@ -146,6 +216,14 @@ export default function FalakApp() {
   const solarNoon = useMemo(() => localSolarNoonMinutes(location.longitude, location.timezone, solar.equationOfTime), [location, solar]);
   useMemo(() => solarPositionAt({ date: new Date(date), latitude: location.latitude, longitude: location.longitude, timezone: location.timezone }), [date, location]);
   const qibla = useMemo(() => qiblaBearing(location.latitude, location.longitude), [location]);
+  const qiblaRelative = useMemo(
+    () => deviceHeading == null ? qibla : ((qibla - deviceHeading) % 360 + 360) % 360,
+    [qibla, deviceHeading]
+  );
+  const qiblaError = useMemo(
+    () => deviceHeading == null ? null : Math.abs((((qibla - deviceHeading) + 540) % 360) - 180),
+    [qibla, deviceHeading]
+  );
   const kaabaDistance = useMemo(() => greatCircleDistanceKm(location.latitude, location.longitude), [location]);
   const rashdul = useMemo(() => findRashdulQibla({ date, latitude: location.latitude, longitude: location.longitude, timezone: location.timezone }), [date, location]);
   const hijri = useMemo(() => gregorianToHijriCivil(date), [date]);
@@ -173,6 +251,24 @@ export default function FalakApp() {
       () => setGeoState("Izin lokasi tidak tersedia. Masukkan koordinat manual."),
       { enableHighAccuracy: true, timeout: 12000, maximumAge: 300000 }
     );
+  };
+
+  const enableCompass = async () => {
+    if (typeof window === "undefined" || typeof window.DeviceOrientationEvent === "undefined") {
+      setCompassPermission("unsupported");
+      return;
+    }
+
+    try {
+      if (typeof window.DeviceOrientationEvent.requestPermission === "function") {
+        const permission = await window.DeviceOrientationEvent.requestPermission();
+        setCompassPermission(permission === "granted" ? "granted" : "denied");
+      } else {
+        setCompassPermission("granted");
+      }
+    } catch {
+      setCompassPermission("denied");
+    }
   };
 
   const updateParameter = (key, value) => {
@@ -289,23 +385,63 @@ export default function FalakApp() {
 
   const renderQibla = () => (
     <section className="content-section page-section">
-      <SectionTitle eyebrow="ARAH KIBLAT" title="Azimut dari titik Anda menuju Ka'bah" text="Bearing dihitung sebagai lintasan lingkaran besar dan ditampilkan terhadap Utara Sejati." />
+      <SectionTitle eyebrow="ARAH KIBLAT" title="Kompas kiblat dari titik Anda" text="Azimut kiblat dihitung dari koordinat. Pada HP yang memiliki sensor orientasi, panah bergerak mengikuti arah perangkat secara langsung." />
       <div className="qibla-layout">
         <div className="compass-panel panel">
-          <div className="compass">
-            <span className="north">U</span><span className="east">T</span><span className="south">S</span><span className="west">B</span>
-            <div className="qibla-arrow" style={{ transform: `rotate(${qibla}deg)` }}><i>◆</i></div>
+          <div className={`compass ${qiblaError != null && qiblaError <= 2.5 ? "aligned" : ""}`}>
+            <div
+              className="compass-rose"
+              style={{ transform: deviceHeading == null ? "rotate(0deg)" : `rotate(${-deviceHeading}deg)` }}
+            >
+              <span className="north">U</span><span className="east">T</span><span className="south">S</span><span className="west">B</span>
+              <div className="axis axis-v" /><div className="axis axis-h" />
+            </div>
+            <div className="qibla-arrow" style={{ transform: `rotate(${qiblaRelative}deg)` }}><i>◆</i></div>
             <div className="compass-center" />
           </div>
-          <strong className="bearing">{formatNumber(qibla, 2)}°</strong>
-          <span className="bearing-caption">dari Utara Sejati</span>
+
+          {deviceHeading == null ? (
+            <>
+              <strong className="bearing">{formatNumber(qibla, 2)}°</strong>
+              <span className="bearing-caption">azimut kiblat dari Utara Sejati</span>
+            </>
+          ) : (
+            <>
+              <strong className="bearing">{formatNumber(deviceHeading, 1)}°</strong>
+              <span className="bearing-caption">arah hadap perangkat · target kiblat {formatNumber(qibla, 2)}°</span>
+            </>
+          )}
+
+          {qiblaError != null && qiblaError <= 2.5 ? (
+            <div className="qibla-aligned">✓ Tepat ke arah kiblat</div>
+          ) : null}
+
+          {compassPermission !== "granted" || deviceHeading == null ? (
+            <button className="button primary compass-button" onClick={enableCompass}>
+              {compassPermission === "denied" ? "Coba izinkan kompas lagi" : "Aktifkan Kompas HP"}
+            </button>
+          ) : null}
+
+          <div className={`compass-status ${compassPermission}`}>
+            {compassPermission === "granted" && deviceHeading != null
+              ? `Sensor aktif · ${compassSource || "orientasi perangkat"}`
+              : compassPermission === "granted"
+                ? "Sensor diizinkan, menunggu data orientasi perangkat…"
+                : compassPermission === "denied"
+                  ? "Izin sensor ditolak. Aktifkan izin Motion & Orientation pada browser."
+                  : compassPermission === "unsupported"
+                    ? "Sensor kompas tidak tersedia pada browser/perangkat ini."
+                    : "Aktifkan sensor agar panah mengikuti arah HP."}
+            {compassAccuracy != null ? <small>Akurasi sensor ±{formatNumber(compassAccuracy, 0)}°</small> : null}
+          </div>
+          <small className="calibration-hint">Pegang HP mendatar. Jika arah terasa meleset, gerakkan HP membentuk angka 8 untuk membantu kalibrasi magnetometer.</small>
         </div>
         <div className="qibla-info">
           <div className="metric-grid">
             <Metric label="Azimut kiblat" value={`${formatNumber(qibla, 4)}°`} sub="True North" />
+            <Metric label="Heading perangkat" value={deviceHeading == null ? "—" : `${formatNumber(deviceHeading, 1)}°`} sub={compassSource || "sensor belum aktif"} />
             <Metric label="Jarak lingkaran besar" value={`${formatNumber(kaabaDistance, 0)} km`} sub="estimasi geodesik" />
-            <Metric label="Lintang" value={`${formatNumber(location.latitude, 6)}°`} sub={location.latitude < 0 ? "LS" : "LU"} />
-            <Metric label="Bujur" value={`${formatNumber(location.longitude, 6)}°`} sub={location.longitude < 0 ? "BB" : "BT"} />
+            <Metric label="Koordinat aktif" value={`${formatNumber(location.latitude, 4)}°, ${formatNumber(location.longitude, 4)}°`} sub={location.label} />
           </div>
           <div className="panel rashdul-card">
             <span className="mini-label">RASHDUL KIBLAT LOKAL</span>
